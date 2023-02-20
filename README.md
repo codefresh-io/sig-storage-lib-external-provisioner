@@ -1,3 +1,9 @@
+## ** Codefresh Fork **
+I created this fork only because it release v9 of this library is malformed and cannot be consumed by our dind-volume-provisioner.
+See this issue: https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/issues/137
+
+Once this issue is resolved we can go back to using the upstream version of this library.
+
 # sig-storage-lib-external-provisioner
 
 A library for writing [external provisioners](https://kubernetes.io/docs/concepts/storage/storage-classes/#provisioner). Projects using this library include:
