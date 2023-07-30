@@ -960,13 +960,13 @@ func (ctrl *ProvisionController) processNextClaimWorkItem(ctx context.Context) b
 		}
 
 		key := item.uid
-		timeInQueue := time.Now().Sub(item.queueTime)
+		// timeInQueue := time.Now().Sub(item.queueTime)
 		
 
 		// mlock.Lock()
 		// delete(m, key)
 		// mlock.Unlock()
-		if err := ctrl.syncClaimHandler(ctx, key, timeInQueue, item.queueLen); err != nil {
+		if err := ctrl.syncClaimHandler(ctx, key/*, timeInQueue, item.queueLen*/); err != nil {
 			if ctrl.failedProvisionThreshold == 0 {
 				klog.Warningf("Retrying syncing claim %q, failure %v", key, ctrl.claimQueue.NumRequeues(obj))
 				ctrl.claimQueue.AddRateLimited(obj)
@@ -1049,7 +1049,7 @@ func (ctrl *ProvisionController) processNextVolumeWorkItem(ctx context.Context) 
 }
 
 // syncClaimHandler gets the claim from informer's cache then calls syncClaim. A non-nil error triggers requeuing of the claim.
-func (ctrl *ProvisionController) syncClaimHandler(ctx context.Context, key string, timeInQueue time.Duration, queueLen int) error {
+func (ctrl *ProvisionController) syncClaimHandler(ctx context.Context, key string/*, timeInQueue time.Duration, queueLen int*/) error {
 	objs, err := ctrl.claimsIndexer.ByIndex(uidIndex, key)
 	if err != nil {
 		return err
@@ -1065,7 +1065,7 @@ func (ctrl *ProvisionController) syncClaimHandler(ctx context.Context, key strin
 		}
 		claimObj = obj
 	}
-	return ctrl.syncClaim(ctx, claimObj, timeInQueue, queueLen)
+	return ctrl.syncClaim(ctx, claimObj/*, timeInQueue, queueLen*/)
 }
 
 // syncVolumeHandler gets the volume from informer's cache then calls syncVolume
@@ -1084,7 +1084,7 @@ func (ctrl *ProvisionController) syncVolumeHandler(ctx context.Context, key stri
 
 // syncClaim checks if the claim should have a volume provisioned for it and
 // provisions one if so. Returns an error if the claim is to be requeued.
-func (ctrl *ProvisionController) syncClaim(ctx context.Context, obj interface{}, timeInQueue time.Duration, queueLen int) error {
+func (ctrl *ProvisionController) syncClaim(ctx context.Context, obj interface{}/*, timeInQueue time.Duration, queueLen int*/) error {
 	claim, ok := obj.(*v1.PersistentVolumeClaim)
 	if !ok {
 		return fmt.Errorf("expected claim but got %+v", obj)
@@ -1096,9 +1096,9 @@ func (ctrl *ProvisionController) syncClaim(ctx context.Context, obj interface{},
 		return err
 	} else if should {
 		startTime := time.Now()
-		if timeInQueue > 5*time.Second {
-			klog.Infof("claim %q time in queue: %q, original queue len: %d", claim.Name, timeInQueue, queueLen)
-		}
+		// if timeInQueue > 5*time.Second {
+		// 	klog.Infof("claim %q time in queue: %q, original queue len: %d", claim.Name, timeInQueue, queueLen)
+		// }
 
 		status, err := ctrl.provisionClaimOperation(ctx, claim)
 		ctrl.updateProvisionStats(claim, err, startTime)
