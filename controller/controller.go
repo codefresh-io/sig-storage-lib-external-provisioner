@@ -1409,6 +1409,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(ctx context.Context, cl
 	//  yet.
 	pvName := ctrl.getProvisionedVolumeNameForClaim(claim)
 	_, exists, err := ctrl.volumes.GetByKey(pvName)
+	klog.Infof("looked for %q, exists: %t, err: %v", pvName, exists, err)
 	if err == nil && exists {
 		// Volume has been already provisioned, nothing to do.
 		klog.Info(logOperation(operation, "persistentvolume %q already exists, skipping", pvName))
