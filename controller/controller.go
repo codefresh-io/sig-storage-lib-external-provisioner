@@ -1146,7 +1146,7 @@ func (ctrl *ProvisionController) syncClaim(ctx context.Context, obj interface{}/
 		return err
 	}
 
-	klog.Infof("syncClaim no error and not should PRV %s", claim.Name)
+	klog.Infof("syncClaim no error and not should PVC %s", claim.Name)
 	return nil
 }
 
@@ -1251,14 +1251,14 @@ func (ctrl *ProvisionController) knownProvisioner(provisioner string) bool {
 // it, i.e. whether a Provision is "desired"
 func (ctrl *ProvisionController) shouldProvision(ctx context.Context, claim *v1.PersistentVolumeClaim) (bool, error) {
 	if claim.Spec.VolumeName != "" {
-		klog.Infof("shouldProvision - claim.Spec.VolumeName is not empty PVC %s", claim.Name)
+		klog.Infof("shouldProvision false - claim.Spec.VolumeName is not empty PVC %s", claim.Name)
 		return false, nil
 	}
 
 	if qualifier, ok := ctrl.provisioner.(Qualifier); ok {
 		klog.Infof("shouldProvision - provisioner is qualifier PVC %s", claim.Name)
 		if !qualifier.ShouldProvision(ctx, claim) {
-			klog.Infof("shouldProvision - qualifier shouldProvision returned false PVC %s", claim.Name)
+			klog.Infof("shouldProvision false - qualifier shouldProvision returned false PVC %s", claim.Name)
 			return false, nil
 		}
 	}
@@ -1276,7 +1276,7 @@ func (ctrl *ProvisionController) shouldProvision(ctx context.Context, claim *v1.
 			claimClass := util.GetPersistentVolumeClaimClass(claim)
 			class, err := ctrl.getStorageClass(claimClass)
 			if err != nil {
-				klog.Infof("shouldProvision - storageClass error %s: %s", claim.Name, err.Error())
+				klog.Infof("shouldProvision false - storageClass error %s: %s", claim.Name, err.Error())
 				return false, err
 			}
 			if class.VolumeBindingMode != nil && *class.VolumeBindingMode == storage.VolumeBindingWaitForFirstConsumer {
@@ -1287,18 +1287,18 @@ func (ctrl *ProvisionController) shouldProvision(ctx context.Context, claim *v1.
 				// annSelectedNode is set, but provisioner may remove
 				// annSelectedNode to notify scheduler to reschedule again.
 				if selectedNode, ok := claim.Annotations[annSelectedNode]; ok && selectedNode != "" {
-					klog.Infof("shouldProvision - selectedNode: %s, PCV %s", selectedNode, claim.Name)
+					klog.Infof("shouldProvision true - selectedNode: %s, PCV %s", selectedNode, claim.Name)
 					return true, nil
 				}
-				klog.Infof("shouldProvision - selectedNode is empty, PCV %s", claim.Name)
+				klog.Infof("shouldProvision false - selectedNode is empty, PCV %s", claim.Name)
 				return false, nil
 			}
-			klog.Infof("shouldProvision - not waitForFirstConsumer, PCV %s", claim.Name)
+			klog.Infof("shouldProvision true - not waitForFirstConsumer, PCV %s", claim.Name)
 			return true, nil
 		}
 	}
 
-	klog.Infof("shouldProvision - annotationnot found PVC %s", claim.Name)
+	klog.Infof("shouldProvision false - annotation not found PVC %s", claim.Name)
 	return false, nil
 }
 
