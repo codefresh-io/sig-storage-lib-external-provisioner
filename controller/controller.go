@@ -217,10 +217,10 @@ const (
 
 var errRuntime = fmt.Errorf("cannot call option functions after controller has Run")
 
-var m = make(map[string]bool)
-var mlock = sync.Mutex{}
-var lastStarted = time.Time{}
-var llock = sync.Mutex{}
+// var m = make(map[string]bool)
+// var mlock = sync.Mutex{}
+// var lastStarted = time.Time{}
+// var llock = sync.Mutex{}
 
 // ResyncPeriod is how often the controller relists PVCs, PVs, & storage
 // classes. OnUpdate will be called even if nothing has changed, meaning failed
@@ -797,16 +797,16 @@ func (ctrl *ProvisionController) enqueueClaim(obj interface{}) {
 	}
 
 	item := &queueItem{uid, claim.Name, time.Now(), ctrl.claimQueue.Len()}
-	mlock.Lock()
-	if _, exist := m[uid]; !exist {
-		m[uid] = true
-		mlock.Unlock()
-		if item.queueTime.Sub(claim.CreationTimestamp.Time) > 3*time.Second {
-			klog.Infof("XXXX enqueue claim: %q, creationTimestamp: %q", claim.Name, claim.CreationTimestamp.Format(time.RFC3339))
-		}
-	} else {
-		mlock.Unlock()
-	}
+	// mlock.Lock()
+	// if _, exist := m[uid]; !exist {
+	// 	m[uid] = true
+	// 	mlock.Unlock()
+	// 	if item.queueTime.Sub(claim.CreationTimestamp.Time) > 3*time.Second {
+	// 		klog.Infof("XXXX enqueue claim: %q, creationTimestamp: %q", claim.Name, claim.CreationTimestamp.Format(time.RFC3339))
+	// 	}
+	// } else {
+	// 	mlock.Unlock()
+	// }
 
 	ctrl.claimQueue.Add(item)
 }
@@ -1397,13 +1397,13 @@ func (ctrl *ProvisionController) provisionClaimOperation(ctx context.Context, cl
 	claimClass := util.GetPersistentVolumeClaimClass(claim)
 	operation := fmt.Sprintf("provision %q class %q", claimToClaimKey(claim), claimClass)
 	klog.Info(logOperation(operation, "started"))
-	llock.Lock()
-	if claim.CreationTimestamp.Time.Sub(lastStarted) < 0 {
-		klog.Infof("XXXX provision %q creationTimestamp: %q, lastStarted: %q", claimToClaimKey(claim), claim.CreationTimestamp.Format(time.RFC3339), lastStarted.Format(time.RFC3339))
-	}
+	// llock.Lock()
+	// if claim.CreationTimestamp.Time.Sub(lastStarted) < 0 {
+	// 	klog.Infof("XXXX provision %q creationTimestamp: %q, lastStarted: %q", claimToClaimKey(claim), claim.CreationTimestamp.Format(time.RFC3339), lastStarted.Format(time.RFC3339))
+	// }
 
-	lastStarted = claim.CreationTimestamp.Time
-	llock.Unlock()
+	// lastStarted = claim.CreationTimestamp.Time
+	// llock.Unlock()
 	//  A previous doProvisionClaim may just have finished while we were waiting for
 	//  the locks. Check that PV (with deterministic name) hasn't been provisioned
 	//  yet.
