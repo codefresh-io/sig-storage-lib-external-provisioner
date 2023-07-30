@@ -796,12 +796,12 @@ func (ctrl *ProvisionController) enqueueClaim(obj interface{}) {
 	// 	return
 	// }
 
-	item := &queueItem{
-		uid: uid,
-		//name: claim.Name,
-		// queueTime: time.Now(),
-		// queueLen: ctrl.claimQueue.Len(),
-	}
+	// item := &queueItem{
+	// 	uid: uid,
+	// 	//name: claim.Name,
+	// 	// queueTime: time.Now(),
+	// 	// queueLen: ctrl.claimQueue.Len(),
+	// }
 	// mlock.Lock()
 	// if _, exist := m[uid]; !exist {
 	// 	m[uid] = true
@@ -813,7 +813,7 @@ func (ctrl *ProvisionController) enqueueClaim(obj interface{}) {
 	// 	mlock.Unlock()
 	// }
 
-	ctrl.claimQueue.Add(item)
+	ctrl.claimQueue.Add(uid)
 }
 
 // enqueueVolume takes an obj and converts it into a namespace/name string which
@@ -958,17 +958,17 @@ func (ctrl *ProvisionController) processNextClaimWorkItem(ctx context.Context) b
 			ctx = timeout
 		}
 		defer ctrl.claimQueue.Done(obj)
-		var item *queueItem
+		// var item *queueItem
 		var key string
 		var ok bool
-		if item, ok = obj.(*queueItem); !ok {
-		// if key, ok = obj.(string); !ok {
+		// if item, ok = obj.(*queueItem); !ok {
+		if key, ok = obj.(string); !ok {
 			ctrl.claimQueue.Forget(obj)
 			klog.Errorf("processNextClaimWorkItem error, key: %s: expected queueItem in workqueue but got %#v", key, obj)
 			return fmt.Errorf("expected queueItem in workqueue but got %#v", obj)
 		}
 
-		key = item.uid
+		// key = item.uid
 		// timeInQueue := time.Now().Sub(item.queueTime)
 		
 
