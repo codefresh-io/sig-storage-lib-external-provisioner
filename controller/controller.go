@@ -177,9 +177,9 @@ type ProvisionController struct {
 
 type queueItem struct {
 	uid       string
-	name      string
-	queueTime time.Time
-	queueLen  int
+	// name      string
+	// queueTime time.Time
+	// queueLen  int
 }
 
 const (
@@ -799,8 +799,8 @@ func (ctrl *ProvisionController) enqueueClaim(obj interface{}) {
 	item := &queueItem{
 		uid: uid,
 		//name: claim.Name,
-		queueTime: time.Now(), 
-		queueLen: ctrl.claimQueue.Len(),
+		// queueTime: time.Now(),
+		// queueLen: ctrl.claimQueue.Len(),
 	}
 	// mlock.Lock()
 	// if _, exist := m[uid]; !exist {
@@ -945,6 +945,7 @@ func (ctrl *ProvisionController) runVolumeWorker(ctx context.Context) {
 // processNextClaimWorkItem processes items from claimQueue
 func (ctrl *ProvisionController) processNextClaimWorkItem(ctx context.Context) bool {
 	obj, shutdown := ctrl.claimQueue.Get()
+	klog.Infof("processNextClaimWorkItem, obj: %v, shutdown: %t", obj, shutdown)
 	if shutdown {
 		return false
 	}
@@ -963,6 +964,7 @@ func (ctrl *ProvisionController) processNextClaimWorkItem(ctx context.Context) b
 		if item, ok = obj.(*queueItem); !ok {
 		// if key, ok = obj.(string); !ok {
 			ctrl.claimQueue.Forget(obj)
+			klog.Errorf("processNextClaimWorkItem error, key: %s: expected queueItem in workqueue but got %#v", key, obj)
 			return fmt.Errorf("expected queueItem in workqueue but got %#v", obj)
 		}
 
@@ -998,6 +1000,7 @@ func (ctrl *ProvisionController) processNextClaimWorkItem(ctx context.Context) b
 	}()
 
 	if err != nil {
+		klog.Errorf("processNextClaimWorkItem error#1003, key: %v: %s", obj, err.Error())
 		utilruntime.HandleError(err)
 		return true
 	}
@@ -1057,15 +1060,19 @@ func (ctrl *ProvisionController) processNextVolumeWorkItem(ctx context.Context) 
 
 // syncClaimHandler gets the claim from informer's cache then calls syncClaim. A non-nil error triggers requeuing of the claim.
 func (ctrl *ProvisionController) syncClaimHandler(ctx context.Context, key string/*, timeInQueue time.Duration, queueLen int*/) error {
+	klog.Infof("syncClaimHandler, key: %s", key)
 	objs, err := ctrl.claimsIndexer.ByIndex(uidIndex, key)
 	if err != nil {
+		klog.Errorf("syncClaimHandler error#1063: %s", err.Error())
 		return err
 	}
 	var claimObj interface{}
+	klog.Infof("syncClaimHandler, key: %s, len(objs): %d", key, len(objs))
 	if len(objs) > 0 {
 		claimObj = objs[0]
 	} else {
 		obj, found := ctrl.claimsInProgress.Load(key)
+		klog.Infof("syncClaimHandler, key: %s, obj: %v, found: %t", key, obj, found)
 		if !found {
 			utilruntime.HandleError(fmt.Errorf("claim %q in work queue no longer exists", key))
 			return nil
@@ -1097,8 +1104,10 @@ func (ctrl *ProvisionController) syncClaim(ctx context.Context, obj interface{}/
 		return fmt.Errorf("expected claim but got %+v", obj)
 	}
 
+	klog.Infof("syncClaim, PVC %s", claim.Name)
 	should, err := ctrl.shouldProvision(ctx, claim)
 	if err != nil {
+		klog.Errorf("syncClaim error#1103 for PVC %s: %s", claim.Name, err.Error())
 		ctrl.updateProvisionStats(claim, err, time.Time{})
 		return err
 	} else if should {
