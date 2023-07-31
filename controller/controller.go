@@ -1433,7 +1433,6 @@ func (ctrl *ProvisionController) provisionClaimOperation(ctx context.Context, cl
 	// Most code here is identical to that found in controller.go of kube's PV controller...
 	claimClass := util.GetPersistentVolumeClaimClass(claim)
 	operation := fmt.Sprintf("provision %q class %q", claimToClaimKey(claim), claimClass)
-	klog.Infof("XXX started uid: %s, name: %q", claim.UID, claim.Name)
 	klog.Info(logOperation(operation, "started"))
 	// llock.Lock()
 	// if claim.CreationTimestamp.Time.Sub(lastStarted) < 0 {
@@ -1506,6 +1505,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(ctx context.Context, cl
 		SelectedNode: selectedNode,
 	}
 
+	klog.Infof("XXX started uid: %s, name: %q", claim.UID, claim.Name)
 	ctrl.eventRecorder.Event(claim, v1.EventTypeNormal, "Provisioning", fmt.Sprintf("External provisioner is provisioning volume for claim %q", claimToClaimKey(claim)))
 
 	volume, result, err := ctrl.provisioner.Provision(ctx, options)
