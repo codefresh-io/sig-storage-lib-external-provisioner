@@ -820,7 +820,7 @@ func (ctrl *ProvisionController) enqueueClaim(obj interface{}) {
 	// 	mlock.Unlock()
 	// }
 
-	klog.Infof("*** enqueueClaim obj: %v", uid)
+	klog.Infof("XXX enqueueClaim uid: %v, len: %d", uid, ctrl.claimQueue.Len())
 	ctrl.claimQueue.Add(uid)
 }
 
@@ -1433,7 +1433,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(ctx context.Context, cl
 	// Most code here is identical to that found in controller.go of kube's PV controller...
 	claimClass := util.GetPersistentVolumeClaimClass(claim)
 	operation := fmt.Sprintf("provision %q class %q", claimToClaimKey(claim), claimClass)
-	klog.Infof("*** started uid: %v, name: %q", claim.UID, claim.Name)
+	klog.Infof("XXX started uid: %s, name: %q", claim.UID, claim.Name)
 	klog.Info(logOperation(operation, "started"))
 	// llock.Lock()
 	// if claim.CreationTimestamp.Time.Sub(lastStarted) < 0 {
