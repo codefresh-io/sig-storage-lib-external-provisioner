@@ -175,6 +175,13 @@ type ProvisionController struct {
 	volumeStore VolumeStore
 }
 
+type queueItem struct {
+	uid string
+	// name      string
+	// queueTime time.Time
+	// queueLen  int
+}
+
 const (
 	// DefaultResyncPeriod is used when option function ResyncPeriod is omitted
 	DefaultResyncPeriod = 15 * time.Minute
@@ -209,6 +216,11 @@ const (
 )
 
 var errRuntime = fmt.Errorf("cannot call option functions after controller has Run")
+
+// var m = make(map[string]bool)
+// var mlock = sync.Mutex{}
+// var lastStarted = time.Time{}
+// var llock = sync.Mutex{}
 
 // ResyncPeriod is how often the controller relists PVCs, PVs, & storage
 // classes. OnUpdate will be called even if nothing has changed, meaning failed
@@ -676,8 +688,14 @@ func NewProvisionController(
 	// PersistentVolumeClaims
 
 	claimHandler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { controller.enqueueClaim(obj) },
-		UpdateFunc: func(oldObj, newObj interface{}) { controller.enqueueClaim(newObj) },
+		AddFunc: func(obj interface{}) {
+			// klog.Infof("claimHandler AddFunc obj: %v", obj)
+			controller.enqueueClaim(obj)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			// klog.Infof("claimHandler UpdateFunc oldObj: %v, newObj: %v", oldObj, newObj)
+			controller.enqueueClaim(newObj)
+		},
 		DeleteFunc: func(obj interface{}) {
 			// NOOP. The claim is either in claimsInProgress and in the queue, so it will be processed as usual
 			// or it's not in claimsInProgress and then we don't care
@@ -774,9 +792,35 @@ func getObjectUID(obj interface{}) (string, error) {
 func (ctrl *ProvisionController) enqueueClaim(obj interface{}) {
 	uid, err := getObjectUID(obj)
 	if err != nil {
+		// klog.Errorf("enqueueClaim error#789: %s", err.Error())
 		utilruntime.HandleError(err)
 		return
 	}
+
+	// claim, ok := obj.(*v1.PersistentVolumeClaim)
+	// if !ok {
+	// 	klog.Errorf("expected PersistentVolumeClaim in workqueue but got %#v", obj)
+	// 	return
+	// }
+
+	// item := &queueItem{
+		// uid: uid,
+		//name: claim.Name,
+		// queueTime: time.Now(),
+		// queueLen: ctrl.claimQueue.Len(),
+	// }
+	// mlock.Lock()
+	// if _, exist := m[uid]; !exist {
+	// 	m[uid] = true
+	// 	mlock.Unlock()
+	// 	if item.queueTime.Sub(claim.CreationTimestamp.Time) > 3*time.Second {
+	// 		klog.Infof("XXXX enqueue claim: %q, creationTimestamp: %q", claim.Name, claim.CreationTimestamp.Format(time.RFC3339))
+	// 	}
+	// } else {
+	// 	mlock.Unlock()
+	// }
+
+	klog.Infof("XXX enqueueClaim uid: %v, len: %d", uid, ctrl.claimQueue.Len())
 	ctrl.claimQueue.Add(uid)
 }
 
@@ -818,12 +862,12 @@ func (ctrl *ProvisionController) Run(ctx context.Context) {
 		ctrl.hasRunLock.Unlock()
 		if ctrl.metricsPort > 0 {
 			prometheus.MustRegister([]prometheus.Collector{
-				metrics.PersistentVolumeClaimProvisionTotal,
-				metrics.PersistentVolumeClaimProvisionFailedTotal,
-				metrics.PersistentVolumeClaimProvisionDurationSeconds,
-				metrics.PersistentVolumeDeleteTotal,
-				metrics.PersistentVolumeDeleteFailedTotal,
-				metrics.PersistentVolumeDeleteDurationSeconds,
+				ctrl.metrics.PersistentVolumeClaimProvisionTotal,
+				ctrl.metrics.PersistentVolumeClaimProvisionFailedTotal,
+				ctrl.metrics.PersistentVolumeClaimProvisionDurationSeconds,
+				ctrl.metrics.PersistentVolumeDeleteTotal,
+				ctrl.metrics.PersistentVolumeDeleteFailedTotal,
+				ctrl.metrics.PersistentVolumeDeleteDurationSeconds,
 			}...)
 			http.Handle(ctrl.metricsPath, promhttp.Handler())
 			address := net.JoinHostPort(ctrl.metricsAddress, strconv.FormatInt(int64(ctrl.metricsPort), 10))
@@ -909,7 +953,7 @@ func (ctrl *ProvisionController) runVolumeWorker(ctx context.Context) {
 // processNextClaimWorkItem processes items from claimQueue
 func (ctrl *ProvisionController) processNextClaimWorkItem(ctx context.Context) bool {
 	obj, shutdown := ctrl.claimQueue.Get()
-
+	// klog.Infof("processNextClaimWorkItem, obj: %v, shutdown: %t", obj, shutdown)
 	if shutdown {
 		return false
 	}
@@ -922,14 +966,23 @@ func (ctrl *ProvisionController) processNextClaimWorkItem(ctx context.Context) b
 			ctx = timeout
 		}
 		defer ctrl.claimQueue.Done(obj)
+		// var item *queueItem
 		var key string
 		var ok bool
+		// if item, ok = obj.(*queueItem); !ok {
 		if key, ok = obj.(string); !ok {
 			ctrl.claimQueue.Forget(obj)
-			return fmt.Errorf("expected string in workqueue but got %#v", obj)
+			// klog.Errorf("processNextClaimWorkItem error, key: %s: expected queueItem in workqueue but got %#v", key, obj)
+			return fmt.Errorf("expected queueItem in workqueue but got %#v", obj)
 		}
 
-		if err := ctrl.syncClaimHandler(ctx, key); err != nil {
+		// key = item.uid
+		// timeInQueue := time.Now().Sub(item.queueTime)
+
+		// mlock.Lock()
+		// delete(m, key)
+		// mlock.Unlock()
+		if err := ctrl.syncClaimHandler(ctx, key /*, timeInQueue, item.queueLen*/); err != nil {
 			if ctrl.failedProvisionThreshold == 0 {
 				klog.Warningf("Retrying syncing claim %q, failure %v", key, ctrl.claimQueue.NumRequeues(obj))
 				ctrl.claimQueue.AddRateLimited(obj)
@@ -954,6 +1007,7 @@ func (ctrl *ProvisionController) processNextClaimWorkItem(ctx context.Context) b
 	}()
 
 	if err != nil {
+		// klog.Errorf("processNextClaimWorkItem error#1003, key: %v: %s", obj, err.Error())
 		utilruntime.HandleError(err)
 		return true
 	}
@@ -1012,23 +1066,27 @@ func (ctrl *ProvisionController) processNextVolumeWorkItem(ctx context.Context) 
 }
 
 // syncClaimHandler gets the claim from informer's cache then calls syncClaim. A non-nil error triggers requeuing of the claim.
-func (ctrl *ProvisionController) syncClaimHandler(ctx context.Context, key string) error {
+func (ctrl *ProvisionController) syncClaimHandler(ctx context.Context, key string /*, timeInQueue time.Duration, queueLen int*/) error {
+	// klog.Infof("syncClaimHandler, key: %s", key)
 	objs, err := ctrl.claimsIndexer.ByIndex(uidIndex, key)
 	if err != nil {
+		// klog.Errorf("syncClaimHandler error#1063: %s", err.Error())
 		return err
 	}
 	var claimObj interface{}
+	// klog.Infof("syncClaimHandler, key: %s, len(objs): %d", key, len(objs))
 	if len(objs) > 0 {
 		claimObj = objs[0]
 	} else {
 		obj, found := ctrl.claimsInProgress.Load(key)
+		// klog.Infof("syncClaimHandler, key: %s, obj: %v, found: %t", key, obj, found)
 		if !found {
 			utilruntime.HandleError(fmt.Errorf("claim %q in work queue no longer exists", key))
 			return nil
 		}
 		claimObj = obj
 	}
-	return ctrl.syncClaim(ctx, claimObj)
+	return ctrl.syncClaim(ctx, claimObj /*, timeInQueue, queueLen*/)
 }
 
 // syncVolumeHandler gets the volume from informer's cache then calls syncVolume
@@ -1047,18 +1105,23 @@ func (ctrl *ProvisionController) syncVolumeHandler(ctx context.Context, key stri
 
 // syncClaim checks if the claim should have a volume provisioned for it and
 // provisions one if so. Returns an error if the claim is to be requeued.
-func (ctrl *ProvisionController) syncClaim(ctx context.Context, obj interface{}) error {
+func (ctrl *ProvisionController) syncClaim(ctx context.Context, obj interface{} /*, timeInQueue time.Duration, queueLen int*/) error {
 	claim, ok := obj.(*v1.PersistentVolumeClaim)
 	if !ok {
 		return fmt.Errorf("expected claim but got %+v", obj)
 	}
 
+	// klog.Infof("syncClaim, PVC %s", claim.Name)
 	should, err := ctrl.shouldProvision(ctx, claim)
 	if err != nil {
+		// klog.Errorf("syncClaim error#1103 for PVC %s: %s", claim.Name, err.Error())
 		ctrl.updateProvisionStats(claim, err, time.Time{})
 		return err
 	} else if should {
 		startTime := time.Now()
+		// if timeInQueue > 5*time.Second {
+		// 	klog.Infof("claim %q time in queue: %q, original queue len: %d", claim.Name, timeInQueue, queueLen)
+		// }
 
 		status, err := ctrl.provisionClaimOperation(ctx, claim)
 		ctrl.updateProvisionStats(claim, err, startTime)
@@ -1089,6 +1152,8 @@ func (ctrl *ProvisionController) syncClaim(ctx context.Context, obj interface{})
 		}
 		return err
 	}
+
+	klog.Infof("syncClaim no error and not should PVC %s", claim.Name)
 	return nil
 }
 
@@ -1193,42 +1258,54 @@ func (ctrl *ProvisionController) knownProvisioner(provisioner string) bool {
 // it, i.e. whether a Provision is "desired"
 func (ctrl *ProvisionController) shouldProvision(ctx context.Context, claim *v1.PersistentVolumeClaim) (bool, error) {
 	if claim.Spec.VolumeName != "" {
+		// klog.Infof("shouldProvision false - claim.Spec.VolumeName is not empty PVC %s", claim.Name)
 		return false, nil
 	}
 
 	if qualifier, ok := ctrl.provisioner.(Qualifier); ok {
+		// klog.Infof("shouldProvision - provisioner is qualifier PVC %s", claim.Name)
 		if !qualifier.ShouldProvision(ctx, claim) {
+			// klog.Infof("shouldProvision false - qualifier shouldProvision returned false PVC %s", claim.Name)
 			return false, nil
 		}
 	}
 
 	provisioner, found := claim.Annotations[annStorageProvisioner]
+	// klog.Infof("shouldProvision - annotation[%s]: %q, found: %t PVC %s", annStorageProvisioner, provisioner, found, claim.Name)
 	if !found {
 		provisioner, found = claim.Annotations[annBetaStorageProvisioner]
+		// klog.Infof("shouldProvision - annotation[%s]: %q, found: %t PVC %s", annBetaStorageProvisioner, provisioner, found, claim.Name)
 	}
 
 	if found {
 		if ctrl.knownProvisioner(provisioner) {
+			// klog.Infof("shouldProvision - ctrl.knownProvisioner PVC %s", claim.Name)
 			claimClass := util.GetPersistentVolumeClaimClass(claim)
 			class, err := ctrl.getStorageClass(claimClass)
 			if err != nil {
+				// klog.Infof("shouldProvision false - storageClass error %s: %s", claim.Name, err.Error())
 				return false, err
 			}
 			if class.VolumeBindingMode != nil && *class.VolumeBindingMode == storage.VolumeBindingWaitForFirstConsumer {
+				// klog.Infof("shouldProvision - waitForFirstConsumer, PCV %s", claim.Name)
 				// When claim is in delay binding mode, annSelectedNode is
 				// required to provision volume.
 				// Though PV controller set annStorageProvisioner only when
 				// annSelectedNode is set, but provisioner may remove
 				// annSelectedNode to notify scheduler to reschedule again.
 				if selectedNode, ok := claim.Annotations[annSelectedNode]; ok && selectedNode != "" {
+					// klog.Infof("shouldProvision true - selectedNode: %s, PCV %s", selectedNode, claim.Name)
 					return true, nil
 				}
+				// klog.Infof("shouldProvision false - selectedNode is empty, PCV %s", claim.Name)
 				return false, nil
 			}
+			// klog.Infof("shouldProvision true - not waitForFirstConsumer, PCV %s", claim.Name)
 			return true, nil
 		}
 	}
 
+	// klog.Infof("shouldProvision false - annotation not found PVC %s", claim.Name)
 	return false, nil
 }
 
@@ -1357,12 +1434,19 @@ func (ctrl *ProvisionController) provisionClaimOperation(ctx context.Context, cl
 	claimClass := util.GetPersistentVolumeClaimClass(claim)
 	operation := fmt.Sprintf("provision %q class %q", claimToClaimKey(claim), claimClass)
 	klog.Info(logOperation(operation, "started"))
+	// llock.Lock()
+	// if claim.CreationTimestamp.Time.Sub(lastStarted) < 0 {
+	// 	klog.Infof("XXXX provision %q creationTimestamp: %q, lastStarted: %q", claimToClaimKey(claim), claim.CreationTimestamp.Format(time.RFC3339), lastStarted.Format(time.RFC3339))
+	// }
 
+	// lastStarted = claim.CreationTimestamp.Time
+	// llock.Unlock()
 	//  A previous doProvisionClaim may just have finished while we were waiting for
 	//  the locks. Check that PV (with deterministic name) hasn't been provisioned
 	//  yet.
 	pvName := ctrl.getProvisionedVolumeNameForClaim(claim)
 	_, exists, err := ctrl.volumes.GetByKey(pvName)
+	// klog.Infof("looked for %q, exists: %t, err: %v", pvName, exists, err)
 	if err == nil && exists {
 		// Volume has been already provisioned, nothing to do.
 		klog.Info(logOperation(operation, "persistentvolume %q already exists, skipping", pvName))
@@ -1421,6 +1505,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(ctx context.Context, cl
 		SelectedNode: selectedNode,
 	}
 
+	klog.Infof("XXX started uid: %s, name: %q", claim.UID, claim.Name)
 	ctrl.eventRecorder.Event(claim, v1.EventTypeNormal, "Provisioning", fmt.Sprintf("External provisioner is provisioning volume for claim %q", claimToClaimKey(claim)))
 
 	volume, result, err := ctrl.provisioner.Provision(ctx, options)
